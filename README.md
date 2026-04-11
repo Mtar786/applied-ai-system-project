@@ -116,22 +116,41 @@ You can add more tests in `tests/test_recommender.py`.
 
 ## Experiments You Tried
 
-*(To be filled in after Phase 2 implementation)*
+Four user profiles were tested. Terminal output for each is shown below.
 
-- What happened when you changed the weight on genre from 3.0 to 0.5
-- What happened when you added tempo or valence to the score
-- How did your system behave for different types of users (high-energy vs. chill)
+**Profile results summary:**
+
+| Profile | #1 Result | Score | Notes |
+|---------|-----------|-------|-------|
+| High-Energy Pop (genre=pop, mood=happy, energy=0.85) | Sunrise City | 6.94 | All 3 main features matched — intuitive top pick |
+| Chill Lofi (genre=lofi, mood=chill, energy=0.38, acoustic=True) | Library Rain | 7.80 | Highest score of any run; acoustic bonus pushed it above Midnight Coding |
+| Deep Intense Rock (genre=rock, mood=intense, energy=0.92) | Storm Runner | 6.98 | Only rock song in catalog — immediately #1, no competition |
+| Edge Case — ambient + peaceful + energy=0.95 | Soft Thunder | 3.76 | Scores were low across the board; conflicting prefs degraded all results |
+
+**Experiment 1 — Weight shift (genre halved, energy doubled):**
+- Genre weight: 3.0 → 1.5 | Energy proximity weight: 2.0 → 4.0
+- For the pop/happy/0.85 profile, Sunrise City stayed #1 but Rooftop Lights jumped from #3 to #2, pushing Gym Hero down
+- Finding: Rooftop Lights is actually a better energy match than Gym Hero; original weights were hiding this by over-rewarding genre loyalty
+- Conclusion: doubling energy weight produces more "vibe-accurate" results but weakens genre coherence
+
+**Experiment 2 — Edge case (conflicting preferences):**
+- Profile: ambient genre + peaceful mood + energy=0.95 (ambient songs are inherently low-energy)
+- Top result was Soft Thunder at only 3.76 — the system silently produced incoherent recommendations
+- Finding: the system has no way to detect or flag contradictory user preferences; it just calculates and returns
+
+**Gym Hero keeps appearing across profiles:**
+Gym Hero (pop, intense, energy=0.93) appeared in both the High-Energy Pop list (#2) and the Deep Intense Rock list (#2). It earns genre points from pop users and mood+energy points from rock users — but it is not a rock song. A real listener wanting intense rock would not want a pop gym track. This is a direct symptom of a small catalog combined with high energy proximity weight.
 
 ---
 
 ## Limitations and Risks
 
-- The catalog has only 10 songs, so results are heavily constrained by what's available
-- It does not consider listening history, skips, or replays — every session starts fresh
-- Genre and mood are exact string matches, so "pop" and "indie pop" are treated as completely different
-- It does not understand lyrics, language, or cultural context
-- High weight on genre match may create a "filter bubble" where users only see one genre
-- Users with niche tastes (e.g., jazz) get fewer matches due to underrepresentation in the catalog
+- Genre and mood comparisons are exact string matches — "pop" and "indie pop" score zero genre overlap even though they are closely related styles
+- High genre weight (3.0 pts) creates a filter bubble: users reliably see only their stated genre at the top, even when songs from other genres are a better vibe match
+- Niche genres (classical, country, folk, metal) have only 1–2 songs each; users who prefer them hit a ceiling quickly and get irrelevant filler recommendations
+- No diversity enforcement — the same artist can appear multiple times in one top-5 list (e.g., LoRoom at #2 and #3 for Chill Lofi)
+- Conflicting preferences (high energy + peaceful mood) are silently accepted and produce incoherent results with no warning to the user
+- No listening history — the system resets completely each run and cannot learn from past behavior
 
 ---
 
@@ -141,11 +160,13 @@ Read and complete `model_card.md`:
 
 [**Model Card**](model_card.md)
 
-*(To be filled in after completing the model card)*
+Read and complete `model_card.md`:
 
-Building this system revealed how recommenders reduce a person's taste to a small set of numbers and categorical labels. Even a simple scoring rule makes consequential decisions — like which feature matters most — that determine what a user sees. Assigning genre a higher weight than mood means the system prioritizes "what kind of music" over "how it makes you feel," which may not match every user's experience.
+[**Model Card**](model_card.md)
 
-Bias can emerge quietly. A catalog with mostly pop and lofi songs will naturally serve pop and lofi listeners better, not because the algorithm is broken, but because the data reflects the choices of whoever built it. Real platforms face this at massive scale: the music that gets recommended gets played, which generates more data, which reinforces the same recommendations — a feedback loop that can crowd out less popular genres entirely.
+Building VibeFinder made clear how much consequential work happens *before* any algorithm runs. Choosing which features to weight, and by how much, shapes who the system serves well and who it underserves. Giving genre a weight of 3.0 felt natural because that is how most people describe their taste — but it is also the single decision that creates the filter bubble. The system ends up confirming what users already said they like instead of helping them discover something new.
+
+The edge-case experiment was the most instructive. Asking for ambient + peaceful + energy=0.95 produced recommendations that were logically consistent (the algorithm followed its rules) but practically useless. That gap — between "the code did what it was told" and "the user got something helpful" — is where most real AI failures live. A better system would detect that peaceful and 0.95 energy are contradictory and ask the user to clarify, rather than silently returning a bad list.
 
 
 ---
