@@ -8,7 +8,14 @@
 
 ## 2. Intended Use
 
-This model suggests up to 5 songs from a small catalog based on a user's preferred genre, mood, and energy level. It is designed for classroom exploration of how content-based recommendation systems work — not for deployment with real users. It assumes the user has a single fixed taste profile and does not learn or adapt over time.
+**What it is for:**
+This model suggests up to 5 songs from a small catalog based on a user's preferred genre, mood, and energy level. It is designed for classroom exploration of how content-based recommendation systems work. It is transparent by design — every recommendation comes with a plain-language explanation — so students and learners can see exactly why each song ranked where it did.
+
+**What it is NOT for:**
+- Real product deployment. The catalog is 20 hand-authored songs; no real user would find this useful at scale.
+- Personalization over time. The system has no memory — it does not learn from skips, replays, or past sessions.
+- Representing diverse musical taste. The dataset skews heavily toward Western popular genres; listeners whose primary genres are underrepresented (classical, world music, regional folk) will receive poor results.
+- High-stakes decisions. This system should never be used to decide what music gets promoted, monetized, or surfaced to real audiences, as its biases are known and unmitigated.
 
 ---
 
@@ -94,6 +101,14 @@ Both automated tests in `tests/test_recommender.py` pass. The pop/happy user cor
 
 ## 9. Personal Reflection
 
-Building VibeFinder made it clear how much consequential work happens *before* any algorithm runs. Choosing which features to include, how to weight them, and what songs to put in the catalog are all human decisions — and each one shapes who the system serves well and who it underserves. The genre weight felt natural to choose as the highest because genre is how most people describe their taste, but that single choice is also what creates the filter bubble.
+**Biggest learning moment:**
+The edge-case experiment was the clearest "aha" of the project. I fed the system a profile that asked for ambient genre + peaceful mood + energy=0.95. The system ran without any errors, returned five songs, and looked totally normal — but the recommendations were useless. Ambient music is inherently low-energy, so the profile was self-contradictory. The algorithm had no way to detect that and silently failed. That moment made it concrete: a system can be technically correct and practically worthless at the same time. That gap is exactly where real AI failures happen.
 
-The edge-case experiment was the most instructive moment. Asking for ambient + peaceful + energy=0.95 produced recommendations that were logically consistent (the system followed its rules correctly) but completely wrong in practice. That gap — between "the algorithm did what it was told" and "the user got something useful" — is where most real-world AI failures live. A truly helpful system would need to reason about whether a user's preferences even make sense together, not just calculate a score and return the top five.
+**How AI tools helped — and when to double-check:**
+AI tools were most useful for generating boilerplate quickly (CSV loading, dataclass setup, sorted() usage) and for suggesting structural patterns like returning `(song, score, reasons)` tuples. Where I needed to slow down was anywhere the AI made a design choice without explaining it — for example, it defaulted to simple greater-than comparisons for energy rather than proximity scoring, which would have produced wrong behavior. The rule I settled on: accept AI output for *how* to write something, but always verify *what* it is actually doing against the intended algorithm before moving on.
+
+**What surprised me about simple algorithms "feeling" like recommendations:**
+I expected the output to feel mechanical and obviously wrong. Instead, the Chill Lofi results (Library Rain at #1, Midnight Coding at #2) felt genuinely right — the kind of playlist a study app might actually surface. What made the difference was the energy proximity scoring. By rewarding closeness rather than just high or low energy, the algorithm captured something real about musical "vibe" even though it had no understanding of music at all. It was just arithmetic, but the output was surprisingly intuitive. That made me realize why content-based systems were the first commercial recommenders — they do not need user data, and they already produce plausible results with very simple math.
+
+**What I would try next:**
+The limitation I most want to fix is the filter bubble. I would add a diversity pass after scoring: once the top results are ranked, replace any second occurrence of the same artist with the next-highest song from a different genre. That single rule would not change the core scoring at all but would make the output feel much more like a real playlist. After that, I would experiment with soft genre matching — building a small similarity table so that "indie pop" and "pop" share partial credit — to make the string-matching less brittle without changing the rest of the algorithm.
