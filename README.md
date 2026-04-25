@@ -1,5 +1,21 @@
 # VibeFinder — AI-Powered Music Recommender
 
+## Video Walkthrough
+
+[![VibeFinder Demo](https://img.shields.io/badge/Loom-Watch%20Demo-blue?logo=loom)](YOUR_LOOM_LINK_HERE)
+
+> **[Watch the end-to-end demo on Loom](YOUR_LOOM_LINK_HERE)**
+> Covers: RAG pipeline, guardrail conflict detection, reliability evaluation suite, and consistency check.
+
+---
+
+## Portfolio
+
+**GitHub:** https://github.com/Mtar786/applied-ai-system-project
+
+**What this project says about me as an AI engineer:**
+VibeFinder reflects how I approach AI development: build something transparent first, then make it smarter responsibly. I started with a simple weighted scorer where every decision was visible and explainable, then layered Claude on top only after the retrieval logic was solid and tested. Adding guardrails before the model call — not after — shows that I think about failure modes during design, not as an afterthought. The reliability evaluator exists because I wanted to make a concrete, repeatable claim about the system's behavior rather than just asserting it worked. I am most interested in AI systems where the reasoning is auditable, the limitations are documented, and a human reviewer can understand exactly why a given output was produced. VibeFinder is a small system, but it was built with that standard in mind.
+
 > A content-based music recommender extended with Retrieval-Augmented Generation (RAG),
 > input guardrails, and an automated reliability evaluation suite.
 
