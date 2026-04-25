@@ -13,3 +13,13 @@ venv/
 
 # Pytest cache
 .pytest_cache/
+
+# Environment secrets
+.env
+
+# Log files (keep the directory, ignore contents)
+logs/*.log
+logs/*.json
+
+# Claude Code internals
+.claude/
