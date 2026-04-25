@@ -1,39 +1,94 @@
 # VibeFinder — AI-Powered Music Recommender
 
-An applied AI system that extends a content-based music recommender with a
-**Retrieval-Augmented Generation (RAG)** pipeline, **input guardrails**, and a
-**reliability evaluation suite**. Built on top of the Module 3 music recommender
-as a final capstone project.
+> A content-based music recommender extended with Retrieval-Augmented Generation (RAG),
+> input guardrails, and an automated reliability evaluation suite.
+
+---
+
+## Original Project
+
+This system is built on top of the **Music Recommender Simulation** from Module 3
+(CodePath AI110). The original project implemented a pure content-based recommender
+in Python: it loaded a CSV catalog of 20 songs, scored each song against a user
+taste profile using weighted rules (genre match = +3.0, mood match = +2.0, energy
+proximity = 0–2.0), and returned a ranked list of top-k recommendations. While
+functional, the original system had no natural-language explanations, no way to
+detect bad inputs, and no way to verify that its outputs were reliable or consistent.
+
+This capstone extends that foundation into a complete applied AI system.
+
+---
+
+## What This Project Does and Why It Matters
+
+VibeFinder takes a user's music preferences (genre, mood, energy level, acoustic
+preference) and returns a curated playlist — complete with a plain-English narrative
+and per-song justifications. It matters because it demonstrates the full lifecycle
+of a responsible AI feature: structured retrieval, language model generation,
+input validation, and automated reliability testing. Every design decision is
+visible and explainable, which is increasingly expected in production AI systems.
 
 ---
 
 ## System Architecture
 
 ```
-User Profile (genre, mood, energy, likes_acoustic)
-        |
-        v
-[Guardrails] ---------- invalid/conflicting? --> warn or reject
-        |
-        v
-[Retriever] -- score_song() on all 20 songs --> top-10 candidates
-        |
-        v
-[Claude API] -- curates top-5, writes narrative + per-song explanations
-        |
-        v
-[Output] -- ranked playlist with vibe summary
-        |
-        v
-[Evaluator] -- runs profile suite, checks consistency, writes JSON report to logs/
++---------------------------+
+|  User Input               |
+|  genre, mood, energy,     |
+|  likes_acoustic           |
++---------------------------+
+            |
+            v
++---------------------------+     invalid or missing field?
+|  Guardrails               | --> reject with error message
+|  guardrails.py            |
+|                           |     conflicting prefs?
+|                           | --> warn user, still proceed
++---------------------------+
+            |
+            v
++---------------------------+
+|  Retriever                |
+|  recommender.py           |
+|  score_song() x 20 songs  |
+|  returns top-10 candidates|
++---------------------------+
+            |
+            v
++---------------------------+
+|  Generator (Claude API)   |
+|  rag_engine.py            |
+|  curates top-5, writes    |
+|  playlist narrative +     |
+|  per-song explanations    |
+|                           |
+|  [fallback if no API key] |
+|  returns scorer output    |
++---------------------------+
+            |
+            v
++---------------------------+
+|  Output                   |
+|  ranked playlist with     |
+|  vibe summary and reasons |
++---------------------------+
+            |
+            v
++---------------------------+
+|  Evaluator (optional)     |
+|  evaluator.py             |
+|  runs 5 test profiles,    |
+|  consistency check,       |
+|  writes JSON report to    |
+|  logs/                    |
++---------------------------+
 ```
 
-**AI Feature implemented: Retrieval-Augmented Generation (RAG)**
-The retriever (weighted scorer) narrows 20 songs to the 10 best candidates.
-Claude then reads those candidates as context and generates a curated playlist
-with a narrative explanation. Neither component alone is as good: the scorer
-provides structured ranking; Claude provides natural-language reasoning and
-holistic curation.
+**Data flows left to right through the pipeline.** The guardrail layer runs first
+so invalid inputs never reach the expensive steps. The retriever handles structured
+ranking; Claude handles natural-language curation. The evaluator sits outside the
+main pipeline and runs on demand to verify system health.
 
 ---
 
@@ -42,27 +97,27 @@ holistic curation.
 ```
 applied-ai-system-project/
 ├── src/
-│   ├── recommender.py    # Song, UserProfile, Recommender, load_songs, recommend_songs
-│   ├── guardrails.py     # Input validation + conflict detection
-│   ├── rag_engine.py     # RAG pipeline: retrieval + Claude generation
-│   ├── evaluator.py      # Reliability test suite + JSON report writer
-│   └── main.py           # CLI entry point (recommend / evaluate / consistency)
+│   ├── recommender.py       # Core: Song, UserProfile, load_songs, score_song, recommend_songs
+│   ├── guardrails.py        # Input validation and conflict detection
+│   ├── rag_engine.py        # RAG pipeline: retrieve -> augment -> generate
+│   ├── evaluator.py         # Reliability test suite, consistency checker, report writer
+│   └── main.py              # CLI entry point with three modes
 ├── data/
-│   └── songs.csv         # 20 songs across 14 genres
+│   └── songs.csv            # 20 songs across 14 genres and 10 moods
 ├── tests/
-│   └── test_recommender.py  # 9 tests covering all modules
-├── logs/                 # Auto-created; stores evaluation JSON reports
-├── assets/               # System diagrams and screenshots
-├── model_card.md         # Full model card for VibeFinder
+│   └── test_recommender.py  # 9 automated tests covering all modules
+├── logs/                    # Auto-created; stores vibefinder.log and JSON reports
+├── assets/                  # System diagrams and screenshots
+├── model_card.md            # Full model card: bias analysis, evaluation, reflection
 ├── requirements.txt
 └── .env.example
 ```
 
 ---
 
-## Setup
+## Setup Instructions
 
-### 1. Clone and enter the repo
+### 1. Clone the repository
 
 ```bash
 git clone https://github.com/Mtar786/applied-ai-system-project.git
@@ -75,128 +130,269 @@ cd applied-ai-system-project
 pip install -r requirements.txt
 ```
 
-### 3. Configure your API key (optional)
+### 3. (Optional) Add your Anthropic API key
 
-Without a key the system runs in **retriever-only fallback mode** — all features
-work except the Claude curation step.
+Without a key, the system runs in **retriever-only fallback mode**. All CLI modes
+work, but the Claude curation step is skipped and the playlist narrative will note
+that the API is unavailable.
 
 ```bash
 cp .env.example .env
-# Edit .env and add your Anthropic API key:
+# Open .env and set:
 # ANTHROPIC_API_KEY=sk-ant-...
+```
+
+### 4. Verify the setup
+
+```bash
+pytest
+# Expected: 9 passed
 ```
 
 ---
 
 ## Usage
 
-### Run a recommendation (RAG pipeline)
+### Mode 1 — Get a recommendation
 
 ```bash
-python -m src.main recommend                    # default: pop profile
+python -m src.main recommend                    # pop profile (default)
 python -m src.main recommend --profile lofi
 python -m src.main recommend --profile rock
 python -m src.main recommend --profile edge     # adversarial / conflicting prefs
 ```
 
-### Run the reliability evaluation suite
+### Mode 2 — Run the reliability evaluation suite
 
 ```bash
 python -m src.main evaluate
 ```
 
-Runs 5 preset profiles, checks whether top results match expected genres/moods,
-runs a 3-run consistency check, and saves a JSON report to `logs/`.
-
-### Check recommendation stability
+### Mode 3 — Check recommendation stability
 
 ```bash
-python -m src.main consistency                  # default: pop profile
+python -m src.main consistency                  # pop (default)
 python -m src.main consistency --profile lofi
 ```
 
-Runs the same profile 5 times and confirms all outputs are identical
-(the scorer is deterministic, so this should always be STABLE).
+---
 
-### Run tests
+## Sample Interactions
 
-```bash
-pytest
+### Example 1 — Chill Lofi profile (retriever-only fallback)
+
+**Input:**
+```
+genre=lofi  mood=chill  energy=0.38  likes_acoustic=True
 ```
 
-9 tests covering: recommender sorting, explanation generation, guardrail
-validation, conflict detection, evaluator suite, and consistency check.
+**Output:**
+```
+============================================================
+  VibeFinder -- lofi / chill / energy=0.38
+============================================================
+
+  Playlist vibe:
+  Recommendations generated by scoring algorithm only
+  (no API key configured -- Claude curation unavailable).
+
+  #1  Library Rain -- Paper Lanterns
+       Score : 7.8
+       Why   : genre match (+3.0); mood match (+2.0); energy proximity (+1.94); acoustic bonus (+0.86)
+
+  #2  Midnight Coding -- LoRoom
+       Score : 7.63
+       Why   : genre match (+3.0); mood match (+2.0); energy proximity (+1.92); acoustic bonus (+0.71)
+
+  #3  Focus Flow -- LoRoom
+       Score : 5.74
+       Why   : genre match (+3.0); energy proximity (+1.96); acoustic bonus (+0.78)
+
+  #4  Spacewalk Thoughts -- Orbit Bloom
+       Score : 4.72
+       Why   : mood match (+2.0); energy proximity (+1.80); acoustic bonus (+0.92)
+
+  #5  Coffee Shop Stories -- Slow Stereo
+       Score : 2.87
+       Why   : energy proximity (+1.98); acoustic bonus (+0.89)
+```
+
+**Why this makes sense:** Library Rain and Midnight Coding are both lofi + chill
+with low energy, matching all three primary signals. Focus Flow hits genre and
+energy but not mood. Spacewalk Thoughts earns mood and acoustic points despite
+being ambient, not lofi — it leaked in because the catalog is small.
 
 ---
 
-## AI Features
+### Example 2 — Edge case with conflicting preferences
 
-### Retrieval-Augmented Generation (RAG)
+**Input:**
+```
+genre=ambient  mood=peaceful  energy=0.95  likes_acoustic=False
+```
 
-| Step | Component | What it does |
-|------|-----------|--------------|
-| Retrieve | `recommend_songs()` | Scores all 20 songs, returns top-10 candidates |
-| Augment | `_format_candidates()` | Formats candidates as structured context |
-| Generate | Claude (`claude-haiku-4-5`) | Curates top-5, writes vibe narrative + explanations |
-| Fallback | `_fallback()` | Returns scorer output if no API key is set |
+**Output:**
+```
+  [!] mood 'peaceful' is typically low-energy but target_energy=0.95 is high
+      -- results may be incoherent
+  [!] genre 'ambient' is inherently low-energy but target_energy=0.95 is very high
+      -- few matches will exist
 
-### Guardrails
+  Running RAG pipeline for profile: ambient / peaceful / energy=0.95
 
-- **Field validation** — rejects profiles missing `genre`, `mood`, or `energy`
-- **Range validation** — rejects energy values outside 0.0–1.0
-- **Unknown value warnings** — warns if genre/mood are not in the known catalog
-- **Conflict detection** — flags contradictory preference pairs before running
-  (e.g., ambient genre + energy=0.95, peaceful mood + high energy)
+  #1  Soft Thunder -- Cloudbreak
+       Score : 3.76
+       Why   : genre match (+3.0); energy proximity (+0.76)
 
-### Reliability Testing
+  #2  Spacewalk Thoughts -- Orbit Bloom
+       Score : 3.66
+       Why   : genre match (+3.0); energy proximity (+0.66)
+```
 
-- **Profile suite** — 5 profiles with expected outcomes; each PASS/FAIL is logged
-- **Consistency check** — reruns the same profile N times; confirms output is stable
-- **JSON report** — timestamped report written to `logs/evaluation_<ts>.json`
-- **Logging** — all runs append to `logs/vibefinder.log`
-
----
-
-## Evaluation Results (Retriever Layer)
-
-| Profile | Top Song | Score | Pass |
-|---------|----------|-------|------|
-| High-Energy Pop | Sunrise City | 6.94 | PASS |
-| Chill Lofi | Library Rain | 7.80 | PASS |
-| Deep Intense Rock | Storm Runner | 6.98 | PASS |
-| Jazz Relaxed | Sunday Brunch | 7.87 | PASS |
-| Edge Case (conflicting) | Soft Thunder | 3.76 | PASS (conflicts flagged) |
-
-Consistency check (pop, 3 runs): **STABLE**
+**What this demonstrates:** The guardrail layer detected that ambient + energy=0.95
+is contradictory and surfaced two warnings before running. The recommender still
+ran (warnings are non-blocking), but the low scores (3.76 vs. a max of 8.0)
+confirm that the preferences were self-defeating. A future version would prompt
+the user to clarify rather than proceeding silently.
 
 ---
 
-## Limitations
+### Example 3 — Reliability evaluation suite
 
-- Catalog is 20 hand-authored songs — niche genre users hit a score ceiling quickly
-- Genre and mood matching is exact string comparison; "indie pop" != "pop"
-- High genre weight (3.0 pts) creates filter bubbles
-- Claude curation requires an API key; fallback mode skips the generation step
-- No listening history — preferences are static per session
+**Input:**
+```bash
+python -m src.main evaluate
+```
 
-See [model_card.md](model_card.md) for the full bias and limitations analysis.
+**Output:**
+```
+============================================================
+  Evaluation Results  (5/5 passed)
+============================================================
+
+  [PASS]  High-Energy Pop
+          top: Sunrise City (score 6.94)
+
+  [PASS]  Chill Lofi
+          top: Library Rain (score 7.8)
+
+  [PASS]  Deep Intense Rock
+          top: Storm Runner (score 6.98)
+
+  [PASS]  Jazz Relaxed
+          top: Sunday Brunch (score 7.87)
+
+  [PASS]  Edge Case -- Conflicting [conflicts detected]
+          top: Soft Thunder (score 3.76)
+          [!] mood 'peaceful' is typically low-energy but target_energy=0.95 is high
+          [!] genre 'ambient' is inherently low-energy but target_energy=0.95 is very high
+
+  Consistency check (pop profile, 3 runs): STABLE [OK]
+  Full report saved to: logs/evaluation_20260425_224820.json
+```
+
+**What this demonstrates:** All five profiles returned the expected top song for
+their genre, and the consistency check confirmed identical output across three
+runs — as expected for a deterministic scorer.
 
 ---
 
-## Design and Architecture Notes
+## Design Decisions and Trade-offs
 
-**Why RAG over a pure LLM approach?**
-Sending all 20 songs to Claude every time would work, but the retrieval step does
-meaningful work: it prunes candidates based on quantitative scoring so Claude
-receives a focused, ranked shortlist rather than an unordered dump. This mirrors
-how production RAG systems use dense retrieval to pre-filter before generation.
+**Why RAG instead of sending all songs directly to Claude?**
+The retrieval step does meaningful work before Claude is ever involved. By scoring
+all 20 songs and passing only the top 10, the model receives a focused, ranked
+shortlist instead of an unordered dump. This mirrors production RAG systems where
+a dense retriever pre-filters a large corpus before generation. It also makes the
+system work at any catalog size — swapping in 10,000 songs would not require
+changing the Claude prompt.
 
-**Why include guardrails?**
-Phase 4 testing revealed that contradictory preferences (ambient + high energy)
-caused the system to silently return incoherent results. Guardrails surface that
-problem before it reaches the recommender or Claude.
+**Why keep the weighted scorer at all?**
+The scorer is fully transparent: every score is explained in plain English
+(genre match +3.0, energy proximity +1.94). This interpretability is lost if you
+hand raw preferences to Claude and ask it to decide. The hybrid approach gets
+quantitative ranking from the scorer and natural-language explanation from Claude.
 
-**Why a reliability evaluator?**
-A deterministic scorer should always produce the same output for the same input.
-The consistency check enforces that. The profile suite checks directional
-correctness — that a "pop user" gets a pop song at the top, not just any song.
+**Why are guardrails non-blocking (warnings, not hard errors) for conflicting prefs?**
+Rejecting the request entirely would frustrate users whose preferences are unusual
+but valid (for example, someone who genuinely wants to explore high-energy ambient).
+Warnings surface the problem without removing user agency. Hard errors are reserved
+for structurally invalid inputs (missing fields, energy outside 0–1).
+
+**Trade-off: exact string matching for genre and mood**
+The simplest implementation. The cost is brittleness: "indie pop" scores zero genre
+match when the user wants "pop." A production system would use embeddings or a
+genre similarity graph. The trade-off was chosen deliberately to keep the scorer
+transparent and free of additional dependencies.
+
+---
+
+## Testing Summary
+
+**What was tested:**
+
+| Test | Result |
+|------|--------|
+| Recommender sorts songs by score correctly | Pass |
+| Explanation is a non-empty string | Pass |
+| Valid profile passes guardrail validation | Pass |
+| Profile missing required field is rejected | Pass |
+| Energy outside 0–1 is rejected | Pass |
+| Conflicting prefs (peaceful + high energy) are flagged | Pass |
+| Valid profile generates no conflicts | Pass |
+| Evaluation suite runs and returns results for all profiles | Pass |
+| Consistency check confirms identical output across 3 runs | Pass |
+
+**9 / 9 tests pass.**
+
+**What worked well:**
+The evaluator was the most useful addition. Running five profiles automatically
+and checking each against an expected outcome caught a bug early: the Jazz Relaxed
+profile was initially returning a pop song at the top because the genre weight
+was overwhelming the energy proximity score. Adjusting the catalog (adding a second
+jazz track — Sunday Brunch) fixed it without changing the algorithm.
+
+**What did not work as expected:**
+The edge-case profile (ambient + peaceful + energy=0.95) technically passes all
+five tests because the test only checks that results exist, not that they are
+coherent. A future test should assert that a conflicting profile's max score stays
+below a threshold, signaling that no strong match was found.
+
+**What I learned:**
+A deterministic system with a structured test suite is easier to trust than one
+without. The consistency check in particular made it immediately obvious that the
+scorer was stable — something that would have required manual verification otherwise.
+
+---
+
+## Reflection
+
+Building this system taught me that the most important decisions in an AI pipeline
+are made before the model is ever called. Choosing what features to weight, what
+inputs to validate, and what outputs to test shapes who the system serves well and
+where it fails quietly. The Claude integration was straightforward once the retrieval
+layer was solid — but getting the retrieval layer right took most of the work.
+
+The guardrail module changed how I think about user input. In the original Module 3
+recommender, contradictory preferences silently produced bad results — the code ran
+fine, the output looked normal, and there was no indication anything was wrong. Adding
+explicit conflict detection meant the system now communicates its own uncertainty to
+the user, which is a more honest and useful design.
+
+The reliability evaluator reinforced that trust in AI outputs comes from evidence,
+not intuition. Running the same profile five times and confirming identical output is
+a simple test, but it produces a concrete, repeatable claim: this system is
+deterministic. That kind of claim matters in a portfolio because it demonstrates
+engineering discipline, not just the ability to get something to run once.
+
+If I extended this further, I would add soft genre matching (embeddings instead of
+exact strings), a diversity pass that caps one song per artist in the final output,
+and a streaming interface so users could refine their profile interactively rather
+than committing to a single static query.
+
+---
+
+## Model Card
+
+See [model_card.md](model_card.md) for the full documentation of VibeFinder's
+intended use, known biases, evaluation methodology, and non-intended uses.
