@@ -392,6 +392,155 @@ than committing to a single static query.
 
 ---
 
+---
+
+## Reliability and Evaluation
+
+### Automated Tests
+
+```bash
+pytest tests/
+# 9 passed in 0.17s
+```
+
+| Test | Module | Result |
+|------|--------|--------|
+| Recommender sorts songs by score descending | `recommender.py` | Pass |
+| `explain_recommendation` returns a non-empty string | `recommender.py` | Pass |
+| Valid profile passes guardrail validation | `guardrails.py` | Pass |
+| Profile missing a required field is rejected | `guardrails.py` | Pass |
+| Energy value outside 0–1 is rejected | `guardrails.py` | Pass |
+| Peaceful mood + high energy is flagged as conflict | `guardrails.py` | Pass |
+| Valid profile generates zero conflict warnings | `guardrails.py` | Pass |
+| Evaluation suite runs and returns results for all 5 profiles | `evaluator.py` | Pass |
+| Consistency check confirms identical output across 3 runs | `evaluator.py` | Pass |
+
+**9 out of 9 tests passed.** The system is fully deterministic: the same input always
+produces the same ranked output. The one area where results felt "off" was the
+edge-case profile — the evaluator marked it PASS because a result was returned, but
+a human reviewer would flag the low max score (3.76 out of 8.0) as a sign the
+preferences were contradictory. A future test should assert a minimum quality
+threshold, not just that output exists.
+
+### Confidence Scoring
+
+The scoring algorithm produces an inherent confidence signal: the raw score (max 8.0).
+A song scoring above 6.0 matched genre, mood, and energy closely — high confidence.
+A song scoring below 3.0 only matched energy proximity — low confidence. This signal
+is already displayed in the CLI output and included in every JSON evaluation report.
+
+### Logging and Error Handling
+
+Every run writes to `logs/vibefinder.log` in this format:
+
+```
+2026-04-25 15:46:38  INFO   src.evaluator   [PASS] High-Energy Pop -- top: Sunrise City (6.94)
+2026-04-25 15:46:38  WARNING src.guardrails  Conflicts detected: ["mood 'peaceful' is low-energy but energy=0.95"]
+2026-04-25 15:47:35  INFO   src.rag_engine  Sending 10 candidates to Claude for curation
+2026-04-25 15:47:35  INFO   src.rag_engine  Claude returned playlist with 5 tracks
+```
+
+The RAG engine catches both `json.JSONDecodeError` (Claude returning malformed output)
+and `anthropic.APIError` (network or quota failures) and falls back to the retriever
+output rather than crashing. This means the CLI never exits with an unhandled exception
+during normal use.
+
+### Human Evaluation Summary
+
+Four profiles were tested manually and compared against personal musical intuition:
+
+- **Chill Lofi** — results felt correct immediately. Library Rain at #1 is exactly
+  what a study playlist should start with.
+- **High-Energy Pop** — Sunrise City at #1 was intuitive. Gym Hero at #2 was
+  accurate but repetitive if played back-to-back.
+- **Deep Intense Rock** — Storm Runner was the only rock track in the catalog, so
+  #1 was automatic. The #2 result (Gym Hero, a pop track) felt like a category error
+  to a human listener even though the math was correct.
+- **Edge Case** — results were numerically consistent but musically nonsensical, which
+  is exactly what the conflict warnings are designed to communicate.
+
+---
+
+## Reflection and Ethics
+
+### Limitations and Biases
+
+**Filter bubble by design.** Genre carries the highest weight (3.0 out of 8.0 max
+points). A user who says they like pop will almost always see pop songs at the top,
+even if a jazz track is a better match for their mood and energy. The system
+reinforces stated preferences rather than helping users discover new genres.
+
+**Catalog underrepresentation.** Classical, country, folk, r&b, and metal each have
+only one song in the dataset. Users who prefer these genres hit a hard ceiling: they
+earn the genre bonus once, then fill the rest of their top-5 with unrelated songs
+selected only by energy proximity. This makes the system significantly less useful
+for listeners outside pop, lofi, and rock.
+
+**Exact string matching is brittle.** The genre "indie pop" scores zero genre match
+when a user wants "pop." A user who types "Chill" instead of "chill" gets no mood
+match. These are silent failures — the system produces output without indicating that
+the comparison failed.
+
+**No temporal context.** The system treats every session as identical. A user who
+wants energetic music at 7am and chill music at 11pm would give the same profile
+both times. Real recommender systems use time-of-day, activity context, and listening
+history to adapt.
+
+### Could This AI Be Misused?
+
+In its current form, VibeFinder is low-risk. The catalog is small and hand-authored,
+and the system makes no claims about users beyond what they explicitly provide.
+
+However, patterns in this design could cause harm if scaled:
+
+- **Catalog bias at scale.** If a platform used this algorithm with a real catalog,
+  genres with fewer tracks would be systematically under-recommended — disadvantaging
+  independent artists and non-Western music regardless of listener preference.
+- **Filter bubbles at scale.** High genre weight would create listeners who only ever
+  hear one genre, reducing exposure to diverse music and concentrating streaming
+  revenue on already-popular styles.
+
+Mitigations: add a diversity pass that enforces genre variety in the top-5, reduce
+genre weight relative to energy and mood, and audit catalog representation before
+deployment.
+
+### What Surprised Me During Testing
+
+The consistency check result was the biggest surprise — not because it passed, but
+because I expected to have to think about it. A deterministic scorer with no
+randomness should always be consistent, and it was. What surprised me was how
+reassuring that confirmation felt. Having a test that says "this output is stable"
+turned out to be more useful than I expected, because it meant any future change
+that broke consistency would be immediately detectable.
+
+The second surprise was Gym Hero appearing in the Deep Intense Rock recommendations
+at #2. Gym Hero is tagged pop/intense with energy=0.93. It earned its slot through
+mood and energy proximity — which is mathematically correct — but a human listener
+wanting rock would be confused to see a pop gym track. That gap between "correct
+by the algorithm" and "correct by human judgment" was the clearest demonstration
+of why human evaluation can't be replaced by automated tests alone.
+
+### AI Collaboration in This Project
+
+**Helpful instance:** When designing the RAG prompt sent to Claude, I was going to
+write a long free-form instruction. The AI suggested structuring the system prompt
+to specify an exact JSON schema and explicitly prohibit markdown fences in the
+response. That suggestion was directly responsible for the JSON parsing working
+reliably — without it, Claude would occasionally wrap its output in triple backticks,
+causing a `json.JSONDecodeError` on every other run.
+
+**Flawed instance:** When first implementing the `score_song` function, the AI
+generated a version that rewarded songs with higher energy values rather than songs
+*closer* to the user's target energy. A user who wanted energy=0.4 would receive
+the same high-energy songs as someone who wanted energy=0.9, because the code was
+doing `song["energy"] * weight` instead of
+`(1 - abs(song["energy"] - target)) * weight`. The output looked plausible — it
+returned songs with scores — and I had to manually trace the logic to catch the
+error. This is a good example of why AI-generated code requires verification against
+the intended behavior, not just against "does it run without errors."
+
+---
+
 ## Model Card
 
 See [model_card.md](model_card.md) for the full documentation of VibeFinder's
