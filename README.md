@@ -2,7 +2,7 @@
 
 ## Video Walkthrough
 
-[![VibeFinder Demo](https://img.shields.io/badge/Loom-Watch%20Demo-blue?logo=loom)](YOUR_LOOM_LINK_HERE)
+[![VibeFinder Demo](https://img.shields.io/badge/Loom-Watch%20Demo-blue?logo=loom)](https://www.loom.com/share/f885f1d2403047cf9d584fd98a1375dd)
 
 > **[Watch the end-to-end demo on Loom](https://www.loom.com/share/f885f1d2403047cf9d584fd98a1375dd)**
 > Covers: RAG pipeline, guardrail conflict detection, reliability evaluation suite, and consistency check.
